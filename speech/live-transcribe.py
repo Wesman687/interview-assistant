@@ -4,8 +4,10 @@ import queue
 import pyaudio
 import threading
 import json
+import websockets
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from google.cloud import speech
+import uvicorn
 
 # ✅ Set Google Cloud credentials
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.path.join(os.path.dirname(__file__), "service-account.json")
@@ -15,18 +17,22 @@ app = FastAPI()
 
 # ✅ Audio recording parameters
 RATE = 16000
-CHUNK = int(RATE / 10)  # 100ms
+CHUNK = int(RATE / 5)  # 100ms
+INTERVIEW_WS_URL = "ws://127.0.0.1:5000/interview/ws" 
 
 # ✅ Google Speech-to-Text client
 client = speech.SpeechClient()
 streaming_config = speech.StreamingRecognitionConfig(
     config=speech.RecognitionConfig(
-        encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
-        sample_rate_hertz=RATE,
-        language_code="en-US",
-    ),
-    interim_results=True,
-)
+    encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
+    sample_rate_hertz=RATE,
+    language_code="en-US",
+    enable_automatic_punctuation=True,  # ✅ Adds punctuation for better readability
+    enable_word_time_offsets=True,  # ✅ Helps detect pauses in speech
+    model="phone_call",  # ✅ Uses Google's improved model
+    use_enhanced=True  # ✅ Enables enhanced speech recognition
+),interim_results=True,)
+
 
 # ✅ Global Variables
 audio_queue = queue.Queue()
@@ -37,6 +43,31 @@ connected_clients = set()  # ✅ WebSocket Clients
 
 # ✅ Detect Silence Timer (10s threshold)
 silence_timer = None
+
+
+async def shutdown():
+    """Graceful shutdown for Asyncio tasks."""
+    tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+    for task in tasks:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            print("✅ Task successfully cancelled.")
+
+    print("🛑 Graceful shutdown complete.")
+
+
+if __name__ == "__main__":
+    try:
+        print("🚀 Starting FastAPI Speech WebSocket Server...")
+        uvicorn.run(app, host="0.0.0.0", port=8000)
+    except KeyboardInterrupt:
+        print("🛑 Server manually stopped.")
+        asyncio.run(shutdown())
+        
+
+
 
 
 def audio_callback(in_data, frame_count, time_info, status):
@@ -53,9 +84,7 @@ def audio_generator():
             break
         yield speech.StreamingRecognizeRequest(audio_content=data)
 
-
 async def recognize_speech():
-    """Process speech recognition and send transcriptions via WebSocket."""
     global buffered_transcript, silence_timer
     print("🎙️ Listening for speech...")
 
@@ -67,46 +96,88 @@ async def recognize_speech():
                 transcript = result.alternatives[0].transcript.strip()
 
                 if not transcript:
-                    continue  # Skip empty results
+                    continue  # ✅ Skip empty results
 
-                # ✅ Restart Silence Timer
+                if result.is_final:  # ✅ Only send complete sentences
+                    print(f"📝 Finalized: {transcript}")
+                    buffered_transcript += " " + transcript  # ✅ Store full sentence
+                    await broadcast_message(json.dumps({"transcription": buffered_transcript.strip()}))
+                    buffered_transcript = ""  # ✅ Reset transcript after sending
+                else:
+                    print(f"📝 Interim: {transcript}")  # ✅ Debugging interim results
+
                 if silence_timer:
                     silence_timer.cancel()
-
-                # ✅ Notify WebSocket clients
-                await broadcast_message(json.dumps({"transcription": transcript}))
-
-                # ✅ Detect if speech has ended (10 sec timeout)
                 silence_timer = asyncio.create_task(notify_silence())
 
     except Exception as e:
         print(f"❌ Error in speech recognition: {e}")
 
 
+
+        
+async def broadcast_status(status):
+    """Send live status updates to all connected clients."""
+    async def send():
+        for client in connected_clients:
+            print(f"📡 Sending status update to client {status}")
+            try:
+                await client.send_json({"status": status})
+            except:
+                pass  # Ignore disconnected clients
+
+    asyncio.create_task(send())
+
+
+
 async def notify_silence():
-    """Notify the frontend after 10s of silence."""
-    await asyncio.sleep(10)
-    await broadcast_message(json.dumps({"transcription": "No speech detected, stopping listener."}))
+    """Notify the frontend after 2s of silence."""
+    await asyncio.sleep(5)
+
+    if connected_clients:
+        await broadcast_status("silent")  # ✅ Make sure it's awaited
+        await broadcast_message(json.dumps({"transcription": "No speech detected."}))
+
     stop_transcription()
 
-
 async def broadcast_message(message):
-    """Send messages to all WebSocket clients."""
-    for client in connected_clients:
+    """Send messages to all WebSocket clients and forward to Interview WebSocket."""
+    disconnected_clients = []  # Track disconnected clients
+
+    for client in connected_clients.copy():
         try:
             await client.send_text(message)
         except:
-            connected_clients.remove(client)
+            disconnected_clients.append(client)  # Mark client for removal
+
+    # ✅ Remove disconnected clients after iteration
+    for client in disconnected_clients:
+        connected_clients.remove(client)
+
+    # ✅ Forward transcript to the Interview WebSocket (AI Processing)
+    await forward_to_interview_ws(message)
 
 
-def start_transcription():
+async def forward_to_interview_ws(message):
+    """Ensure the transcript gets forwarded to the Interview Assistant WebSocket."""
+    try:
+        print(f"📤 Forwarding to Interview API: {message}")
+        async with websockets.connect(INTERVIEW_WS_URL) as ws:
+            await ws.send(message)
+            print(f"📤 Successfully Forwarded to Interview API: {message}")
+    except Exception as e:
+        print(f"❌ Error forwarding transcript: {e}")
+        await asyncio.sleep(2)  # Retry delay
+        await forward_to_interview_ws(message)  # ✅ Retry on failure
+
+async def start_transcription():
     """Start audio stream and recognition."""
     print("🎤 Starting speech recognition...")
     global running
     if running:
         return
     running = True
-
+    await broadcast_status("listening")
     audio_interface = pyaudio.PyAudio()
     stream = audio_interface.open(
         format=pyaudio.paInt16,
@@ -121,12 +192,13 @@ def start_transcription():
     print("✅ Speech recognition started")
 
 
-def stop_transcription():
+async def stop_transcription():
     """Stop the audio stream and recognition."""
     global running
     if not running:
         return
     running = False
+    await broadcast_status("stopped")
     audio_queue.put(None)
     print("🛑 Speech recognition stopped")
 
@@ -147,16 +219,8 @@ async def speech_status_endpoint(websocket: WebSocket):
         connected_clients.remove(websocket)
         print("❌ WebSocket Disconnected")
 
-def broadcast_status(status):
-    """Send live status updates to all connected clients."""
-    async def send():
-        for client in connected_clients:
-            try:
-                await client.send_json({"status": status})
-            except:
-                pass  # Ignore disconnected clients
 
-    asyncio.create_task(send())
+
     
 @app.websocket("/speech/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -169,13 +233,16 @@ async def websocket_endpoint(websocket: WebSocket):
         while True:
             message = await websocket.receive_text()
             if message == "start":
-                print("🎤 Starting transcription...")
-                start_transcription()
+                await start_transcription()
             elif message == "stop":
-                print("🛑 Stopping transcription...")
-                stop_transcription()
+                await stop_transcription()
     except WebSocketDisconnect:
-        connected_clients.remove(websocket)
         print("❌ WebSocket client disconnected")
+    except Exception as e:
+        print(f"⚠️ Unexpected WebSocket error: {e}")
+    finally:
+        connected_clients.discard(websocket)  # ✅ Use discard to avoid KeyError
+
+
 
 

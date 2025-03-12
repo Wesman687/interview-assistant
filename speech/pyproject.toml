@@ -1,0 +1,25 @@
+[tool.poetry]
+name = "live-transcriber"
+version = "0.1.0"
+description = "Transcribes Interviews and Sends To AI to get preferred Responses"
+authors = ["Wesman687 <wesman687@gmail.com>"]
+readme = "README.md"
+
+# ✅ Ensure poetry recognizes the "app" directory as the main package
+packages = [{ include = "app" }]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+fastapi = "^0.95.0"
+uvicorn = {extras = ["standard"], version = "^0.22.0"}
+pyaudio = "^0.2.11"
+google-cloud-speech = "^2.16.1"
+websockets = "^11.0"
+
+# ✅ Add a script to start the server correctly
+[tool.poetry.scripts]
+transcribe = "app.main:run"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
