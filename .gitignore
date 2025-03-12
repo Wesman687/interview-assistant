@@ -41,3 +41,4 @@ nextjs/.env.local
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+speech/service-account.json
