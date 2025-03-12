@@ -21,19 +21,33 @@ class WebSocketManager:
 
     async def broadcast(self, message: str):
         """Broadcasts a message to all connected WebSockets."""
+        print(f"📡 Broadcasting: {message} to {len(self.connected_clients)} clients.")  # ✅ Debugging
+        
         disconnected_clients = set()
 
         for client in self.connected_clients.copy():
             try:
+                # ✅ Ensure messages sent to Interview WebSocket are logged
+                print(f"📤 Sending message to WebSocket: {client}")
+
+                # ✅ Check if WebSocket is for /interview/ws before sending
+                if "interview" in str(client.scope["path"]):
+                    print("📨 Routing to Interview WebSocket...")
+                else:
+                    print("📨 Sending to another WebSocket...")
+
                 await client.send_text(message)
-            except Exception:
+            except Exception as e:
+                print(f"⚠️ Error sending to WebSocket: {e}")
                 disconnected_clients.add(client)
 
         # ✅ Remove disconnected clients
         for client in disconnected_clients:
             self.connected_clients.remove(client)
 
-        print(f"📡 Broadcasted message to {len(self.connected_clients)} clients.")
+        print(f"✅ Finished broadcasting to {len(self.connected_clients)} active clients.")
+
+
         
     async def close_all(self):
         """Force-close all WebSocket connections on shutdown."""
@@ -51,10 +65,10 @@ class WebSocketManager:
         """Send live status updates to all clients."""
         await self.broadcast(json.dumps({"status": status}))
         
-    async def broadcast_message(self, transcription: str):
+    async def broadcast_message(self, transcription_payload: str):
         """Broadcasts transcriptions to all connected WebSockets."""
-        message = json.dumps({"transcription": transcription})
+        message = json.dumps(transcription_payload)
         await self.broadcast(message)
-        print(f"📡 Sent transcription: {transcription}")
+        print(f"📡 Sent transcription: {transcription_payload}")
 
 websocket_manager = WebSocketManager()

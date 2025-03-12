@@ -33,7 +33,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.utils.websocket_manager import websocket_manager
 
 app = FastAPI(title="Live Transcribe & Interview Assistant")
-
+# taskkill /F /IM uvicorn.exe
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -54,41 +54,13 @@ async def root():
     return {"message": "Live Transcriber is running!"}
 
 
-async def shutdown():
-    """Graceful shutdown for Asyncio tasks."""
-    print("🛑 Initiating graceful shutdown...")
-
-    # ✅ Close all active WebSocket connections
-    await websocket_manager.close_all()
-
-    # ✅ Cancel all pending tasks
-    tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
-    for task in tasks:
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            print("✅ Task successfully cancelled.")
-
-    print("🛑 Graceful shutdown complete.")
 
 
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Triggered when FastAPI shuts down."""
-    await shutdown()
 
 
-def handle_exit(signal, frame):
-    """Handles CTRL+C or kill signals for clean shutdown."""
-    print("\n🛑 Caught exit signal, shutting down...")
-    asyncio.run(shutdown())
-    sys.exit(0)
 
 
-# ✅ Register exit handlers for CTRL+C (SIGINT) & kill (SIGTERM)
-signal.signal(signal.SIGINT, handle_exit)
-signal.signal(signal.SIGTERM, handle_exit)
+
 
 
 def run():
