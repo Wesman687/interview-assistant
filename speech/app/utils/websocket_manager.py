@@ -1,6 +1,6 @@
 import asyncio
 import json
-from fastapi import WebSocket
+from fastapi import WebSocket, WebSocketDisconnect
 
 class WebSocketManager:
     """Manages connected WebSocket clients and broadcasting messages."""
@@ -16,59 +16,58 @@ class WebSocketManager:
 
     async def disconnect(self, websocket: WebSocket):
         """Removes a WebSocket connection."""
-        self.connected_clients.discard(websocket)
-        print(f"❌ WebSocket disconnected. Remaining: {len(self.connected_clients)}")
+        if websocket in self.connected_clients:
+            self.connected_clients.discard(websocket)
+            print(f"❌ WebSocket disconnected. Remaining: {len(self.connected_clients)}")
 
     async def broadcast(self, message: str):
         """Broadcasts a message to all connected WebSockets."""
-        print(f"📡 Broadcasting: {message} to {len(self.connected_clients)} clients.")  # ✅ Debugging
+        print(f"📡 Broadcasting: {message} to {len(self.connected_clients)} clients.")  
         
         disconnected_clients = set()
 
-        for client in self.connected_clients.copy():
+        for client in list(self.connected_clients):
             try:
-                # ✅ Ensure messages sent to Interview WebSocket are logged
-                print(f"📤 Sending message to WebSocket: {client}")
-
-                # ✅ Check if WebSocket is for /interview/ws before sending
-                if "interview" in str(client.scope["path"]):
-                    print("📨 Routing to Interview WebSocket...")
-                else:
-                    print("📨 Sending to another WebSocket...")
-
+                # ✅ Debugging logs
                 await client.send_text(message)
+
+            except WebSocketDisconnect:
+                print(f"❌ WebSocket {client} disconnected.")
+                disconnected_clients.add(client)
+
             except Exception as e:
                 print(f"⚠️ Error sending to WebSocket: {e}")
                 disconnected_clients.add(client)
 
-        # ✅ Remove disconnected clients
+        # ✅ Remove all disconnected clients safely
         for client in disconnected_clients:
-            self.connected_clients.remove(client)
+            self.connected_clients.discard(client)
 
         print(f"✅ Finished broadcasting to {len(self.connected_clients)} active clients.")
 
-
-        
     async def close_all(self):
         """Force-close all WebSocket connections on shutdown."""
         print("🔌 Closing all WebSockets...")
+
         for client in list(self.connected_clients):
             try:
-                await client.close(code=1000)
+                if client.application_state != "DISCONNECTED":
+                    await client.close(code=1000)
             except Exception as e:
                 print(f"⚠️ Error closing WebSocket: {e}")
+
         self.connected_clients.clear()
         print("✅ All WebSockets closed.")
 
-        
     async def broadcast_status(self, status: str):
         """Send live status updates to all clients."""
         await self.broadcast(json.dumps({"status": status}))
         
-    async def broadcast_message(self, transcription_payload: str):
+    async def broadcast_message(self, transcription_payload: dict):
         """Broadcasts transcriptions to all connected WebSockets."""
         message = json.dumps(transcription_payload)
         await self.broadcast(message)
         print(f"📡 Sent transcription: {transcription_payload}")
 
+# ✅ Create WebSocket Manager instance
 websocket_manager = WebSocketManager()

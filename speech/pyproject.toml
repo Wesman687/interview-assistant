@@ -17,6 +17,7 @@ google-cloud-speech = "^2.16.1"
 websockets = "^11.0"
 
 # ✅ Add a script to start the server correctly
+bs4 = "^0.0.2"
 [tool.poetry.scripts]
 transcribe = "app.main:run"
 

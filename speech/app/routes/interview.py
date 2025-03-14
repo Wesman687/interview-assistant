@@ -1,6 +1,7 @@
 import asyncio
 import json
 from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from app.config import GROQ_API_KEY
 from app.interview.cleaning import get_clean_response
@@ -12,71 +13,27 @@ router = APIRouter()
 
 @router.websocket("/ws")
 async def interview_websocket(websocket: WebSocket):
-    """Handles AI WebSocket connections & processes responses."""
-    print("🔌 Attempting to accept Interview WebSocket connection")
+    """Handles AI WebSocket connections & only broadcasts responses."""
+    print("🔌 Accepting WebSocket connection...")
+    await websocket_manager.connect(websocket)
+    print("✅ WebSocket connected!")
 
     try:
-        await websocket_manager.connect(websocket)
-        print("✅ Interview WebSocket connection accepted")
-
         while True:
-            try:
-                print("🛑 Waiting for a message from the WebSocket...")
-                
-                # ✅ FORCE WebSocket to listen for a message
-                message = await websocket.receive_text()
-                
-                # ✅ Log received message
-                print(f"📥 Interview WebSocket Received RAW: {message}")
-
-                # ✅ Ensure JSON is properly parsed
-                try:
-                    message_data = json.loads(message)
-                    
-                    # ✅ Handle possible double-encoded JSON
-                    if isinstance(message_data.get("transcription"), str):
-                        try:
-                            print(f"🔍 Found double-encoded JSON: {message_data['transcription']}")
-                            message_data = json.loads(message_data["transcription"])
-                        except json.JSONDecodeError:
-                            print("❌ Failed to decode double-encoded JSON")
-                    
-                    transcription = message_data.get("transcription", "")
-                except json.JSONDecodeError:
-                    print(f"❌ Failed to decode JSON: {message}")
-                    transcription = message  # Fallback if JSON fails
-
-                # ✅ Debug: Confirm transcription content
-                print(f"📜 Processing Transcription: {transcription}")
-
-                # ✅ AI Processing
-                cleaned_response = get_clean_response(transcription)  # ✅ AI Call
-                print(f"🤖 AI Response from Groq API: {cleaned_response}")  # ✅ Debugging
-
-                response_payload = json.dumps({
-                    "transcription": transcription,
-                    "responses": {"preferred": cleaned_response or "No response available."}
-                })
-
-                print(f"📤 Sending AI Response to frontend: {response_payload}")
-                await websocket.send_text(response_payload)
-
-            except asyncio.CancelledError:
-                print("⚠️ Task was cancelled. WebSocket is closing safely.")
-                break  # ✅ Prevents crash
-
-            except Exception as e:
-                print(f"⚠️ Unexpected WebSocket Error: {e}")
-                await websocket.close()
-                break  # ✅ Exit loop on error
+            await asyncio.sleep(30)  # ✅ Keep connection alive
 
     except WebSocketDisconnect:
-        await websocket_manager.disconnect(websocket)
-        print("❌ Interview WebSocket disconnected")
+        print("❌ WebSocket disconnected (Client likely closed connection).")
 
     except Exception as e:
         print(f"⚠️ Unexpected WebSocket Error: {e}")
-        await websocket.close()
+
+    finally:
+        try:
+            await websocket_manager.disconnect(websocket)
+        except RuntimeError:
+            print("⚠️ WebSocket was already closed, skipping cleanup.")
+
 
 
 @router.get("/company-info")
@@ -94,12 +51,17 @@ class TechStackRequest(BaseModel):
 
 
 
-@router.post("/tech-stack")  # ✅ Explicitly allow POST
+@router.post("/tech-stack")
 async def get_tech_stack(request: TechStackRequest):
-    """Fetches tech stack details."""
+    """Fetches tech stack details and returns it as JSON."""
     try:
         print(f"🔍 Fetching Tech Stack Data for: {request.jobInfo}")
-        response = await fetch_tech_stack(request.jobInfo)  # Assume this is an async function
-        return {"tech_stack": response}
+        response = await fetch_tech_stack(request.jobInfo)
+
+        if "error" in response:
+            return JSONResponse(content={"error": response["error"]}, status_code=500)
+
+        return JSONResponse(content=response, status_code=200)  # ✅ Ensure proper JSON response
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching tech stack: {str(e)}")
+        return JSONResponse(content={"error": f"Error fetching tech stack: {str(e)}"}, status_code=500)

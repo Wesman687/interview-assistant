@@ -67,27 +67,33 @@ async def fetch_tech_stack(jobInfo: str) -> dict:
 }
 
     try:
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=30) as client:
             response = await client.post(
                 "https://api.groq.com/openai/v1/chat/completions",
                 json=payload,
                 headers=headers
             )
-            response.raise_for_status()  # ✅ Raise an error for bad responses (4xx, 5xx)
+            response.raise_for_status()  # ✅ Raises exception if the response is an error
+
+        data = response.json()
+
+        if "choices" not in data or not data["choices"]:
+            return {"error": "No valid response from AI"}
+
+        return {"tech_stack": data["choices"][0]["message"]["content"].strip()}
+
+    except httpx.HTTPStatusError as e:
+        print(f"❌ HTTP Status Error: {e.response.status_code} - {e.response.text}")
+        return {"error": f"HTTP error: {e.response.status_code}"}
+
+    except httpx.ConnectTimeout:
+        print("❌ Request Timed Out.")
+        return {"error": "Request timed out"}
+
     except httpx.RequestError as e:
         print(f"❌ Network Error: {e}")
         return {"error": "Network request failed"}
 
-    data = response.json()
-
-    # ✅ Check if "choices" exist
-    if "choices" not in data or not data["choices"]:
-        return {"error": "No valid response from AI"}
-
-    # ✅ Extract AI-generated message
-    raw_content = data["choices"][0]["message"]["content"].strip()
-
-    # ✅ Clean response
-    cleaned_content = clean_ai_response(raw_content)
-
-    return {"tech_stack": cleaned_content}
+    except Exception as e:
+        print(f"❌ Unexpected Error: {e}")
+        return {"error": "Unknown error"}

@@ -34,6 +34,10 @@ from app.utils.websocket_manager import websocket_manager
 
 app = FastAPI(title="Live Transcribe & Interview Assistant")
 # taskkill /F /IM uvicorn.exe
+
+
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -53,6 +57,26 @@ app.include_router(status_router, prefix="/status")
 async def root():
     return {"message": "Live Transcriber is running!"}
 
+
+async def shutdown():
+    """Gracefully shutdown the WebSocket manager and other async processes."""
+    await websocket_manager.close_all()
+    print("✅ Server shut down successfully.")
+
+
+def run():
+    """Run Uvicorn with Windows-safe multiprocessing."""
+    print("🚀 Starting FastAPI Server...")
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+
+
+if __name__ == "__main__":
+    multiprocessing.freeze_support()  # ✅ Fix for Windows multiprocessing issues
+    try:
+        run()
+    except KeyboardInterrupt:
+        print("🛑 Server manually stopped.")
+        asyncio.run(shutdown())
 
 
 
