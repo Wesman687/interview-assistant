@@ -1,7 +1,11 @@
 import asyncio
 import json
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from app.interview.ai_processing import get_clean_response
+from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel
+from app.config import GROQ_API_KEY
+from app.interview.cleaning import get_clean_response
+from app.interview.get_company import fetch_company_info
+from app.interview.get_tech_stack import fetch_tech_stack
 from app.utils.websocket_manager import websocket_manager  # ✅ Import centralized WebSocket manager
 
 router = APIRouter()
@@ -73,3 +77,29 @@ async def interview_websocket(websocket: WebSocket):
     except Exception as e:
         print(f"⚠️ Unexpected WebSocket Error: {e}")
         await websocket.close()
+
+
+@router.get("/company-info")
+async def get_company_info(company: str = Query(..., title="Company Name")):
+    """Fetches quick company details from DeepSeek R1."""
+    print(f"🔍 Fetching company info for: {company}")
+    try:
+        response = await fetch_company_info(company)
+        return response
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching company info: {str(e)}")
+
+class TechStackRequest(BaseModel):
+    jobInfo: str
+
+
+
+@router.post("/tech-stack")  # ✅ Explicitly allow POST
+async def get_tech_stack(request: TechStackRequest):
+    """Fetches tech stack details."""
+    try:
+        print(f"🔍 Fetching Tech Stack Data for: {request.jobInfo}")
+        response = await fetch_tech_stack(request.jobInfo)  # Assume this is an async function
+        return {"tech_stack": response}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching tech stack: {str(e)}")
