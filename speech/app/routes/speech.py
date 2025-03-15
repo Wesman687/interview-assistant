@@ -7,6 +7,22 @@ import websockets
 
 router = APIRouter()
 
+USE_WHISPER = False  # Default to Google STT
+
+@router.post("/toggle-transcription")
+async def toggle_transcription(engine: str):
+    """Toggle between Google STT and Whisper AI."""
+    global USE_WHISPER
+
+    if engine.lower() == "whisper":
+        USE_WHISPER = True
+    else:
+        USE_WHISPER = False
+
+
+    return {"message": f"Switched to {'Whisper' if USE_WHISPER else 'Google STT'}"}
+
+
 @router.websocket("/ws")
 async def speech_websocket(websocket: WebSocket):
     """Handles WebSocket connections for live speech recognition."""
