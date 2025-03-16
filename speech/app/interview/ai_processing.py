@@ -23,7 +23,7 @@ async def process_ai_response(transcription_text):
             "responses": {"preferred": cleaned_response or "No response available."}
         }
 
-        await websocket_manager.broadcast_message(response_payload)
+        await websocket_manager.broadcast_interview_message(response_payload)
         print(f"📡 Sent AI Response: {response_payload}")
         
          # ✅ Step 2: Fetch Follow-Up Questions
@@ -38,7 +38,7 @@ async def process_ai_response(transcription_text):
                 "followUp": cleaned_followup_response or ["No follow-up questions available."]
             }
         }
-        await websocket_manager.broadcast_message(full_response_payload)
+        await websocket_manager.broadcast_interview_message(full_response_payload)
         print(f"📡 Sent Full AI Response (with Follow-Ups): {full_response_payload}")
 
     except Exception as e:

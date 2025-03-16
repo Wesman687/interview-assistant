@@ -42,3 +42,4 @@ nextjs/.env.local
 *.tsbuildinfo
 next-env.d.ts
 speech/service-account.json
+speech/.venv/*

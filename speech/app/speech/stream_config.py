@@ -85,8 +85,14 @@ resume_keywords = [
 ]
 
 # Combine all custom phrases and assign a strong boost for recognition
-custom_phrases = industry_terms + business_terms + technical_questions + behavioral_questions + resume_keywords 
-+ algorithmic_questions
+custom_phrases = (
+    industry_terms 
+    + business_terms 
+    + technical_questions 
+    + behavioral_questions 
+    + resume_keywords 
+    + algorithmic_questions
+)
 speech_context = speech.SpeechContext(phrases=custom_phrases, boost=20.0)
 
 # 4. Configure speaker diarization for exactly 2 speakers (Recruiter and Me)
@@ -100,7 +106,7 @@ diarization_config = speech.SpeakerDiarizationConfig(
 recognition_config = speech.RecognitionConfig(
     language_code="en-US",
     encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,  # assuming linear PCM audio
-    sample_rate_hertz=44100,  # typical sample rate for microphone audio
+    sample_rate_hertz=16000,  # typical sample rate for microphone audio
     model="video",            # use an enhanced model for conversations (e.g., "video" or "phone_call")
     use_enhanced=True,        # enable enhanced model for higher accuracy
     enable_automatic_punctuation=True,  # add punctuation for sentence coherence
@@ -112,5 +118,4 @@ recognition_config = speech.RecognitionConfig(
 streaming_config = speech.StreamingRecognitionConfig(
     config=recognition_config,
     interim_results=False,    # prioritize complete sentences over interim partial results
-    single_utterance=False    # allow multiple utterances (entire interview) in one session
 )

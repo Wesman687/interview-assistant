@@ -1,7 +1,11 @@
 import os
 from dotenv import load_dotenv
 
-load_dotenv()
+dotenv_path = os.path.join(os.path.dirname(__file__), ".env")
+
+# Load .env
+load_dotenv(dotenv_path)
+
 # ✅ Set Google Cloud credentials
 GOOGLE_CREDENTIALS_PATH = "C:/Code/live-interview/speech/service-account.json"
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = GOOGLE_CREDENTIALS_PATH

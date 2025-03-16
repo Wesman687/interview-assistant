@@ -1,43 +1,25 @@
 import asyncio
-import json
-import multiprocessing
-from app.utils.websocket_manager import websocket_manager
-from fastapi import FastAPI
-import uvicorn
-from app.routes.interview import router as interview_router
-from app.routes.status import router as status_router
-from app.routes.speech import router as speech_router
-from fastapi.middleware.cors import CORSMiddleware
-
-app = FastAPI(title="Live Transcribe & Interview Assistant")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # ✅ Allow all origins
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],  # ✅ WebSockets use GET
-    allow_headers=["*"],
-)
-# ✅ Include API routes
-app.include_router(interview_router, prefix="/interview")
-app.include_router(status_router, prefix="/status")
-app.include_router(speech_router, prefix="/speech")
-import asyncio
+import os
 import signal
 import sys
 from fastapi import FastAPI
+from app.utils.websocket_manager import websocket_manager
 import uvicorn
+from fastapi.middleware.cors import CORSMiddleware
 from app.routes.speech import router as speech_router
 from app.routes.interview import router as interview_router
-from app.routes.status import router as status_router
-from fastapi.middleware.cors import CORSMiddleware
-from app.utils.websocket_manager import websocket_manager
 
+EVENT_LOOP = None  # 🔥 Store loop globally for use in all threads
 app = FastAPI(title="Live Transcribe & Interview Assistant")
-# taskkill /F /IM uvicorn.exe
+
+# ✅ Ensure `app.state` exists
+if not hasattr(app, "state"):
+    print("❌ app.state does not exist! Creating it now...")
+    app.state = type("State", (), {})()  # ✅ Creates an attribute-based state object
 
 
-
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 app.add_middleware(
     CORSMiddleware,
@@ -46,62 +28,50 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.include_router(speech_router, prefix="/speech")    
+app.include_router(interview_router, prefix="/interview")
 
 # ✅ Include API routes
-app.include_router(speech_router, prefix="/speech")
-app.include_router(interview_router, prefix="/interview")
-app.include_router(status_router, prefix="/status")
-
-
 
 @app.get("/")
 async def root():
     return {"message": "Live Transcriber is running!"}
-
+@app.on_event("startup")
+async def startup_event():
+    """✅ Store FastAPI's event loop globally."""
+    global EVENT_LOOP
+    EVENT_LOOP = asyncio.get_running_loop()  # 🔥 Save loop globally
+    print("✅ FastAPI event loop stored globally.")
 
 async def shutdown():
-    """Gracefully shutdown the WebSocket manager and other async processes."""
+    """Gracefully shutdown WebSocket connections and services."""
     print("🛑 Broadcasting shutdown message...")
-    await websocket_manager.broadcast(json.dumps({"type": "shutdown"}))  # 🔴 Send shutdown message
-    await asyncio.sleep(3)  # 🕒 Give clients time to stop reconnecting
+    await websocket_manager.broadcast('{"type": "shutdown", "status": "shutdown"}', "speech")
+    await asyncio.sleep(3)  # 🕒 Allow clients to close
     await websocket_manager.close_all()
     print("✅ Server shut down successfully.")
 
+    # 🔥 Kill all Uvicorn processes to prevent stuck processes
+    os.system("taskkill /IM python.exe /F")  # 🔴 Force close all Python instances (Windows only)
 
-def run():
-    """Run Uvicorn with Windows-safe multiprocessing."""
+    sys.exit(0)
+
+def start_server():
+    """Run Uvicorn server."""
     print("🚀 Starting FastAPI Server...")
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
-
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=False)
 
 if __name__ == "__main__":
-    multiprocessing.freeze_support()  # ✅ Fix for Windows multiprocessing issues
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    EVENT_LOOP = loop  # ✅ Set persistent global loop
+    
+    # ✅ Handle shutdown with signal handlers
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, lambda: asyncio.create_task(shutdown()))
+
     try:
-        run()
+        start_server()
     except KeyboardInterrupt:
         print("🛑 Server manually stopped.")
-        asyncio.run(shutdown())
-
-
-
-
-
-
-
-
-
-
-def run():
-    """Run Uvicorn with Windows-safe multiprocessing."""
-    if __name__ == "__main__":
-        multiprocessing.freeze_support()  # ✅ Prevents Windows multiprocessing issues
-        try:
-            print("🚀 Starting FastAPI Server...")
-            uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
-        except KeyboardInterrupt:
-            print("🛑 Server manually stopped.")
-            asyncio.run(shutdown())
-
-
-if __name__ == "__main__":
-    run()
+        loop.run_until_complete(shutdown())

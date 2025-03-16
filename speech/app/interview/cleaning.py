@@ -26,10 +26,8 @@ async def get_clean_response(transcription: str) -> str:
 
 def clean_ai_response(content: str) -> str:
     """Cleans AI-generated responses by removing unwanted tags and trimming extra spaces."""
-
     if not content or not isinstance(content, str):
         return "Error: Invalid response format"
-
     # ✅ Remove <think>...</think> blocks
     content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL)
 
