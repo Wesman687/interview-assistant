@@ -1,4 +1,5 @@
 import asyncio
+import json
 import multiprocessing
 from app.utils.websocket_manager import websocket_manager
 from fastapi import FastAPI
@@ -60,6 +61,9 @@ async def root():
 
 async def shutdown():
     """Gracefully shutdown the WebSocket manager and other async processes."""
+    print("🛑 Broadcasting shutdown message...")
+    await websocket_manager.broadcast(json.dumps({"type": "shutdown"}))  # 🔴 Send shutdown message
+    await asyncio.sleep(3)  # 🕒 Give clients time to stop reconnecting
     await websocket_manager.close_all()
     print("✅ Server shut down successfully.")
 
