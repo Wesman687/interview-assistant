@@ -1,14 +1,21 @@
 
 import asyncio
-from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
+import io
+import os
+from PIL import Image 
+import imghdr
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+import pytesseract
 from app.config import GROQ_API_KEY
 from app.interview.cleaning import clean_ai_response
+from app.interview.get_code import evaluate_code_with_deepseek, extract_text_from_image
 from app.interview.get_company import fetch_company_info
 from app.interview.get_tech_stack import fetch_tech_stack
 from app.utils.websocket_manager import websocket_manager  # ✅ Import centralized WebSocket manager
-
+UPLOAD_FOLDER = "uploads"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 router = APIRouter()
 
 @router.websocket("/ws")
@@ -34,8 +41,38 @@ async def interview_websocket(websocket: WebSocket):
         print(f"❌ Unexpected WebSocket Error: {e}")
     finally:
         await websocket_manager.disconnect(websocket, "status")
+        
+@router.post("/ss")
+async def get_ss(file: UploadFile = File(...)):
+    """ Accepts an image file, extracts code, and evaluates it with DeepSeek. """
 
+    try:
+        # ✅ Read the file content into memory
+        image_bytes = await file.read()
+        print(f"🧪 Received file: {file.filename}, Content-Type: {file.content_type}")
+        print(f"🧪 First 20 bytes: {image_bytes[:20]}")
+        print(f"🧪 Detected format: {imghdr.what(None, h=image_bytes)}")
+        # ✅ Open the image using PIL from bytes
+        image = Image.open(io.BytesIO(image_bytes))
 
+        # ✅ OCR the image
+        text = pytesseract.image_to_string(image).strip()
+
+    except Exception as e:
+        print(f"❌ Error processing image: {e}")
+        return {"error": "Failed to process image"}
+
+    if not text:
+        return {"error": "No readable text found in the image"}
+
+    # 🧠 Evaluate code with DeepSeek
+    prompt = await evaluate_code_with_deepseek(text)
+
+    return {
+        "filename": file.filename,
+        "extracted_text": text,
+        "deepseek_response": prompt
+    }
 
 
 @router.get("/company-info")

@@ -3,7 +3,7 @@ import json
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from app.speech.transcribe import start_transcription, stop_transcription
 from app.utils.websocket_manager import websocket_manager  # ✅ Import WebSocket Manager
-import app.config2 
+
 
 router = APIRouter()
 
@@ -11,7 +11,6 @@ router = APIRouter()
 async def status_websocket(websocket: WebSocket):
     """Handles WebSocket connections for system status updates."""
     print("🔌 Accepting Status WebSocket connection...")
-    global USE_WHISPER
     await websocket_manager.connect(websocket, "speech")
     print("✅ Status WebSocket connected!")
 
@@ -34,18 +33,22 @@ async def status_websocket(websocket: WebSocket):
 
             # ✅ Handle speech-related actions
             if message_data["type"] == "speech":
+                print(f"🎤 Speech Action: {message_data['action']}")
                 if message_data["action"] == "start":
-                    await start_transcription()
+                    try:
+                        await start_transcription()
+                    except Exception as e:
+                        print(f"❌ Failed to start transcription: {e}")
+                        await websocket_manager.broadcast_speech_status("stopped")
                     await websocket_manager.broadcast_speech_status("listening")
                 elif message_data["action"] == "stop":
-                    await stop_transcription()
+                    print("🛑 Stopping transcription...")
+                    try:
+                        await stop_transcription()
+                    except Exception as e:
+                        print(f"❌ Failed to stop transcription: {e}")
                     await websocket_manager.broadcast_speech_status("stopped")
-                elif message_data["action"] == "toggleWhisper":
-                    app.config2.USE_WHISPER = message_data.get("useWhisper", not app.config2.USE_WHISPER)
-                    await websocket_manager.broadcast_speech_status("toggleWhisper",{ "useWhisper": app.config2.USE_WHISPER})
-                elif message_data["action"] == "getWhisperStatus":
-                    await websocket_manager.broadcast_speech_status("getWhisperStatus",{ "useWhisper": app.config2.USE_WHISPER})
-
+                    
     except WebSocketDisconnect:
         print("❌ Status WebSocket disconnected.")
     except asyncio.CancelledError:

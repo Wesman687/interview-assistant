@@ -28,18 +28,9 @@ async def process_ai_response(transcription_text):
         
          # ✅ Step 2: Fetch Follow-Up Questions
         print("🚀 Fetching follow-up questions...")
-        follow_up_questions = await get_follow_up_questions(transcription_text, cleaned_response)  # ✅ Fetch
-        print(f"✅ Follow-Up Questions Received: {follow_up_questions}")
+        # follow_up_questions = await get_follow_up_questions(transcription_text, cleaned_response)  # ✅ Fetch
 
-        cleaned_followup_response = clean_ai_response(follow_up_questions)
-        # ✅ Step 3: Broadcast Follow-Up Questions
-        full_response_payload = {
-            "responses": {
-                "followUp": cleaned_followup_response or ["No follow-up questions available."]
-            }
-        }
-        await websocket_manager.broadcast_interview_message(full_response_payload)
-        print(f"📡 Sent Full AI Response (with Follow-Ups): {full_response_payload}")
+        
 
     except Exception as e:
         print(f"❌ ERROR in process_ai_response: {e}")

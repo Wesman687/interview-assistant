@@ -9,7 +9,7 @@ load_dotenv(dotenv_path)
 # ✅ Set Google Cloud credentials
 GOOGLE_CREDENTIALS_PATH = "C:/Code/live-interview/speech/service-account.json"
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = GOOGLE_CREDENTIALS_PATH
-
+YOUR_DOMAIN = os.getenv("YOUR_DOMAIN")
 # ✅ Google Speech-to-Text Settings
 SPEECH_CONFIG = {
     "encoding": "LINEAR16",

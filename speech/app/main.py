@@ -8,8 +8,10 @@ import uvicorn
 from fastapi.middleware.cors import CORSMiddleware
 from app.routes.speech import router as speech_router
 from app.routes.interview import router as interview_router
+from app.routes.twilio import router as twilio_router
+from app.routes.twiml import router as twiml_router
+from app.utils.event_loop import EVENT_LOOP
 
-EVENT_LOOP = None  # 🔥 Store loop globally for use in all threads
 app = FastAPI(title="Live Transcribe & Interview Assistant")
 
 # ✅ Ensure `app.state` exists
@@ -28,6 +30,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.include_router(twiml_router, prefix="/twiml")
+app.include_router(twilio_router, prefix="/twilio")
 app.include_router(speech_router, prefix="/speech")    
 app.include_router(interview_router, prefix="/interview")
 
@@ -38,8 +42,8 @@ async def root():
     return {"message": "Live Transcriber is running!"}
 @app.on_event("startup")
 async def startup_event():
-    """✅ Store FastAPI's event loop globally."""
     global EVENT_LOOP
+    """✅ Store FastAPI's event loop globally."""
     EVENT_LOOP = asyncio.get_running_loop()  # 🔥 Save loop globally
     print("✅ FastAPI event loop stored globally.")
 
@@ -62,16 +66,14 @@ def start_server():
     uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=False)
 
 if __name__ == "__main__":
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    EVENT_LOOP = loop  # ✅ Set persistent global loop
+    EVENT_LOOP.run_forever()
     
     # ✅ Handle shutdown with signal handlers
     for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, lambda: asyncio.create_task(shutdown()))
+        EVENT_LOOP.add_signal_handler(sig, lambda: asyncio.create_task(shutdown()))
 
     try:
         start_server()
     except KeyboardInterrupt:
         print("🛑 Server manually stopped.")
-        loop.run_until_complete(shutdown())
+        EVENT_LOOP.run_until_complete(shutdown())

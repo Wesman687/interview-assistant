@@ -9,7 +9,10 @@ class WebSocketManager:
         self.connections = {
             "interview": set(),
             "speech": set(),
+            "twilio": set()
         }
+        self.call_sid = None
+        
 
     async def connect(self, websocket: WebSocket, connection_type: str):
         """Accepts a WebSocket connection and adds it to the correct pool."""
@@ -43,8 +46,6 @@ class WebSocketManager:
         for client in disconnected_clients:
             self.connections[connection_type].discard(client)
 
-        print(f"✅ Finished broadcasting to {len(self.connections[connection_type])} active {connection_type} WebSockets.")
-
     async def close_all(self):
         """Force-close all WebSocket connections on shutdown."""
         print("🔌 Closing all WebSockets...")
@@ -66,16 +67,36 @@ class WebSocketManager:
 
         json_message = json.dumps(message)
         await websocket_manager.broadcast(json_message, "speech")
-        print(f"📡 Sent system status update: {message}")
-        
     async def broadcast_interview_message(self, payload: dict):
-        """Send live interview updates to connected clients."""
+        """Send AI-generated response to interview WebSocket clients."""
         payload["type"] = "interview"
-
-        json_message = json.dumps(payload)  # ✅ Serialize message
+        json_message = json.dumps(payload)
         await websocket_manager.broadcast(json_message, "interview")
-        print(f"📡 Sent interview update: {payload}")
         
+    async def broadcast_twilio_message(self, payload: dict):
+        """Send AI-generated response to Twilio WebSocket clients."""
+        payload["type"] = "twilio"
+        json_message = json.dumps(payload)
+        await websocket_manager.broadcast(json_message, "twilio")
+
+    async def send_twilio_audio_response(self, response_text: str):
+        """Send AI-generated response as Twilio-compatible XML over WebSocket."""
+        
+        response_payload = {
+            "event": "response",
+            "text": response_text
+        }        
+        # ✅ Broadcast response as text
+        await websocket_manager.broadcast(json.dumps(response_payload), "twilio")
+
+        # ✅ Convert to TwiML for Twilio
+        twilio_response = f"""
+        <Response>
+            <Say>{response_text}</Say>
+        </Response>        """
+
+        # ✅ Broadcast TwiML so Twilio can process it
+        await websocket_manager.broadcast(json.dumps({"twiml": twilio_response}), "twilio")
 
 
 # ✅ Create a single instance to be shared across routes
