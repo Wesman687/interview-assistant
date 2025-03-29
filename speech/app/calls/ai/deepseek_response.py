@@ -69,8 +69,10 @@ async def generate_ai_response(transcription, tone):
     Only return the message you want to say out loud.
     """
 
+    
     final_response = ollama.chat(model="mistral:7b-instruct", messages=[{"role": "user", "content": general_prompt}])
     answer = final_response['message']['content'].strip()
 
     print(f"🤖 AI Response: {answer}")
     return answer
+
